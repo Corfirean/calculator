@@ -1,10 +1,25 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:sizer/sizer.dart';
+import 'dart:math';
+import 'dart:io';
+import 'package:window_manager/window_manager.dart';
 
-void main() {
-  runApp(MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    await windowManager.ensureInitialized();
+    WindowOptions windowOptions = WindowOptions(
+      minimumSize: const Size(500, 700),
+      maximumSize: const Size(800, 1200),
+    );
+    await windowManager.setMinimumSize(windowOptions.minimumSize!);
+    await windowManager.setMaximumSize(windowOptions.maximumSize!);
+  }
+
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -12,13 +27,29 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Sizer(builder: (context, orientation, devicetype) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData.dark(),
-        home: HomePage(),
-    );
-    }
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        primaryColor: Colors.black,
+        scaffoldBackgroundColor: Colors.black,
+        colorScheme: ColorScheme.dark(
+          primary: Colors.tealAccent[400]!,
+          secondary: Colors.tealAccent[400]!,
+        ),
+        textTheme: const TextTheme(
+          headlineMedium: TextStyle(
+            fontSize: 25,
+            fontWeight: FontWeight.w300,
+            color: Colors.white,
+          ),
+          bodyLarge: TextStyle(
+            fontSize: 18,
+            color: Colors.grey,
+          ),
+        ),
+      ),
+      home: const HomePage(),
     );
   }
 }
@@ -36,138 +67,149 @@ class _HomePageState extends State<HomePage> {
   bool shouldResetInput = false;
   bool _shouldStartNewExpression = false;
 
- final List<String> buttons = [
-  'C', '+/-', '%', 'DEL',
-  '(', ')', '^', '/',
-  '7', '8', '9', 'x',
-  '4', '5', '6', '-',
-  '1', '2', '3', '+',
-  '0', '.', '=', ''
-];
+  static const double minButtonSize = 60.0;
+  static const double spacing = 8.0;
 
-Widget buildButton(String buttonText) {
-  if (buttonText.isEmpty) {
-    return Container();
-  } //пустая кнопка справа внизу, чтоб не рушить сетку
-  
-  return Material(
-    color: getButtonColor(buttonText),
-    borderRadius: BorderRadius.circular(10),
-    child: InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: () => onButtonPressed(buttonText),
-      child: Center(
-        child: Text(
-          buttonText,
-          style: TextStyle(
-            fontSize: 24,
-            color: getTextColor(buttonText),
-            fontWeight: FontWeight.bold,
+  final List<String> buttons = [
+    'C', '+/-', '%', 'DEL',
+    '(', ')', '^', '/',
+    '7', '8', '9', 'x',
+    '4', '5', '6', '-',
+    '1', '2', '3', '+',
+    '0', '.', '=', ''
+  ];
+
+  Widget buildButton(String buttonText, double size) {
+    if (buttonText.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Material(
+        color: getButtonColor(buttonText),
+        borderRadius: BorderRadius.circular(size / 2),
+        elevation: 2,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(size / 2),
+          onTap: () => onButtonPressed(buttonText),
+          splashColor: Colors.tealAccent[400]!.withOpacity(0.3),
+          highlightColor: Colors.tealAccent[400]!.withOpacity(0.1),
+          child: Center(
+            child: Text(
+              buttonText,
+              style: TextStyle(
+                fontSize: size * 0.35,
+                color: getTextColor(buttonText),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(
-      title: Text("Scientific Calculator"),
-    ),
-    body: Column(
-      children: [
-        Expanded(
-            child: Container(
-              padding: EdgeInsets.all(20),
-              alignment: Alignment.bottomRight,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  // Поле ввода выражения
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Text(
-                      userInput,
-                      style: TextStyle(fontSize: 24, color: Colors.grey),
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final buttonAreaHeight = constraints.maxHeight * 0.6;
+            final buttonSize = min(
+              (constraints.maxWidth - spacing * 5) / 4,
+              (buttonAreaHeight - spacing * 6) / 5,
+            );
+            return Column(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    alignment: Alignment.bottomRight,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Text(
+                            userInput,
+                            style: const TextStyle(fontSize: 24, color: Colors.grey),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          answer,
+                          style: Theme.of(context).textTheme.headlineMedium,
+                        ),
+                      ],
                     ),
                   ),
-                  SizedBox(height: 10),
-                  // Поле результата
-                  Text(
-                    answer,
-                    style: TextStyle(
-                      fontSize: 48,
-                      fontWeight: FontWeight.bold,
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(spacing),
+                  child: GridView.count(
+                  crossAxisCount: 4,
+                  childAspectRatio: 1,
+                  mainAxisSpacing: spacing,
+                  crossAxisSpacing: spacing,
+                  physics: const NeverScrollableScrollPhysics(),
+                  shrinkWrap: true,
+                  children: buttons.map((button) {
+                    return buildButton(button, buttonSize);
+                    }).toList(),
                     ),
                   ),
-                ],
-              ),
-            ),
+               ]
+             );
+          },
         ),
-        // Кнопки
-        Expanded(
-          flex: 3,
-          child: GridView.builder(
-            itemCount: buttons.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              childAspectRatio: 1.1,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-            ),
-            padding: EdgeInsets.all(8),
-            itemBuilder: (context, index) {
-              return buildButton(buttons[index]);
-            },
-          ),
-        ),      
-      ],
-    ),
-  );
-}
-//показываем баланс скобок
-bool isParenthesesBalanced(String expr) {
-  int balance = 0;
-  for (var char in expr.split('')) {
-    if (char == '(') balance++;
-    if (char == ')') balance--;
-    if (balance < 0) return false;
+      ),
+    );
   }
-  return balance == 0;
-}
 
-bool isOperator(String x) {
-  return ['/', 'x', '-', '+', '%', '^'].contains(x);
-}
+
+  bool isParenthesesBalanced(String expr) {
+    int balance = 0;
+    for (var char in expr.split('')) {
+      if (char == '(') balance++;
+      if (char == ')') balance--;
+      if (balance < 0) return false;
+    }
+    return balance == 0;
+  }
+
+  bool isOperator(String x) {
+    return ['/', 'x', '-', '+', '%', '^'].contains(x);
+  }
 
   Color getButtonColor(String buttonText) {
-  if (buttonText == 'C') return Colors.red[400]!;
-  if (buttonText == '=') return Colors.orange;
-  if (buttonText == '(' || buttonText == ')') return Colors.blue[300]!;
-  if (isOperator(buttonText)) return Colors.blue[700]!;
-  return Colors.grey[200]!;
-}
-
-  Color getTextColor(String buttonText) {
-    return (buttonText == 'C' || isOperator(buttonText) || buttonText == '=')
-        ? Colors.white
-        : Colors.black;
+    if (buttonText == 'C') return Colors.grey[850]!;
+    if (buttonText == 'DEL') return Colors.grey[850]!;
+    if (buttonText == '=') return Colors.tealAccent[400]!;
+    if (buttonText == '(' || buttonText == ')') return Colors.grey[800]!;
+    if (isOperator(buttonText)) return Colors.grey[800]!;
+    return Colors.grey[900]!;
   }
 
-//логика кнопок с проверкой отрицательных чисел
-void onButtonPressed(String buttonText) {
-    setState(() {
+  Color getTextColor(String buttonText) {
+    if (buttonText == '=') return Colors.black;
+    if (isOperator(buttonText)) return Colors.tealAccent[400]!;
+    if (buttonText == 'C' || buttonText == 'DEL') return Colors.tealAccent[400]!;
+    return Colors.white;
+  }
 
+  void onButtonPressed(String buttonText) {
+    setState(() {
       if (buttonText.isEmpty) return;
 
-          if (buttonText == '(' || buttonText == ')') {
-      handleParenthesis(buttonText);
-      return;
-    }
-    //добавление * между скобками, если нет другого оператора
+      if (buttonText == '(' || buttonText == ')') {
+        handleParenthesis(buttonText);
+        return;
+      }
 
       if (buttonText == 'C') {
         userInput = '';
@@ -185,170 +227,103 @@ void onButtonPressed(String buttonText) {
       }
 
       if (buttonText == '=') {
-      equalPressed();
-      return;
-    }
+        equalPressed();
+        return;
+      }
 
-    if (_shouldStartNewExpression && isOperator(buttonText)) {
+      if (_shouldStartNewExpression && isOperator(buttonText)) {
         userInput = answer + buttonText;
         _shouldStartNewExpression = false;
         return;
       }
 
-    if (isOperator(buttonText)) {
-      // Разрешаем минус в пустом поле
-      if (userInput.isEmpty && buttonText == '-') {
-        userInput = '-';
-        return;
-      }
-      
-      // Запрещаем другие операторы в пустом поле
-      if (userInput.isEmpty) return;
+      if (isOperator(buttonText)) {
+        if (userInput.isEmpty && buttonText == '-') {
+          userInput = '-';
+          return;
+        }
+        
+        if (userInput.isEmpty) return;
 
-      final lastChar = userInput[userInput.length - 1];
+        final lastChar = userInput[userInput.length - 1];
 
-      // Если последний символ - оператор
-      if (isOperator(lastChar)) {
-        // Нажатие минуса после оператора (для отрицательных чисел)
-        if (buttonText == '-') {
-          // Разрешаем только один минус после оператора
-          if (lastChar != '-') {
-            userInput += '-';
+        if (isOperator(lastChar)) {
+          if (buttonText == '-') {
+            if (lastChar != '-') {
+              userInput += '-';
+            }
+          } else {
+            while (userInput.isNotEmpty && isOperator(userInput[userInput.length - 1])) {
+              userInput = userInput.substring(0, userInput.length - 1);
+            }
+            userInput += buttonText;
           }
-        } 
-        // Нажатие другого оператора
-        else {
-          // Удаляем все операторы в конце
-          while (userInput.isNotEmpty && isOperator(userInput[userInput.length - 1])) {
-            userInput = userInput.substring(0, userInput.length - 1);
-          }
+        } else {
           userInput += buttonText;
         }
-      } 
-      // Если последний символ - число
-      else {
-        userInput += buttonText;
-      }
-    } 
-    // Обработка цифр и точки
-    else {
-      // Если было вычисление, начинаем новое выражение
-      if (answer != '0' && userInput.isEmpty) {
-        userInput = buttonText;
-        answer = '0';
       } else {
-        userInput += buttonText;
+        if (answer != '0' && userInput.isEmpty) {
+          userInput = buttonText;
+          answer = '0';
+        } else {
+          userInput += buttonText;
+        }
       }
-    }
     });
   }
 
-      void handleParenthesis(String parenthesis) {
-  if (parenthesis == '(') {
-    // Автоматически добавляем умножение перед открывающей скобкой, если нужно
-    if (userInput.isNotEmpty && 
-        !isOperator(userInput[userInput.length - 1]) && 
-        userInput[userInput.length - 1] != '(') {
-      userInput += '*(';
+  void handleParenthesis(String parenthesis) {
+    if (parenthesis == '(') {
+      if (userInput.isNotEmpty && 
+          !isOperator(userInput[userInput.length - 1]) && 
+          userInput[userInput.length - 1] != '(') {
+        userInput += '*(';
+      } else {
+        userInput += '(';
+      }
     } else {
-      userInput += '(';
+      userInput += ')';
     }
-  } else {
-    // Просто добавляем закрывающую скобку
-    userInput += ')';
   }
+
+  Future<void> equalPressed() async {
+    try {
+      if (userInput.isEmpty) {
+        setState(() => answer = "Error: Empty input");
+        return;
       }
 
-//нажали =
-Future<void> equalPressed() async {
-  try {
-    // проверка пустого ввода
-    if (userInput.isEmpty) {
-      setState(() => answer = "Error: Empty input");
-      return;
-    }
-
-    // проверка баланса скобок
-    if (!isParenthesesBalanced(userInput)) {
-      setState(() => answer = "Error: Unbalanced parentheses");
-      return;
-    }
-
-    // проверка операторов
-    final operatorMatch = RegExp(r'([\+\-\x\*\/\%\^])').firstMatch(userInput);
-    if (operatorMatch == null) {
-      setState(() => answer = "Error: No operator found");
-      return;
-    }
-
-    String expression = userInput.replaceAll('x', '*');
-
-    // отправили на сервер
-    final response = await http.post(
-    Uri.parse('http://localhost:8080/calc'),
-    headers: {'Content-Type': 'application/json'},
-    body: jsonEncode({
-        'expression': expression,
-      }),
-);
-
-    // проверка ответа
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      setState(() => answer = data['result'].toString());
-      _shouldStartNewExpression = true;
-    } else {
-      final error = jsonDecode(response.body)['error'] ?? 'Unknown error';
-      setState(() => answer = "Server error: $error");
-    }
-  } catch (e) {
-    setState(() => answer = "Error: ${e.toString()}");
-  }
-}
+      if (!isParenthesesBalanced(userInput)) {
+        setState(() => answer = "Error: Unbalanced parentheses");
+        return;
       }
-// виджет кнопок
-class MyButton extends StatelessWidget {
-  final Color? color;
-  final Color textColor;
-  final String buttonText;
-  final VoidCallback? buttontapped;
 
-  const MyButton({super.key, 
-    this.color,
-    this.textColor = Colors.black,
-    required this.buttonText,
-    this.buttontapped,
-  });
+      final operatorMatch = RegExp(r'([\+\-\x\*\/\%\^])').firstMatch(userInput);
+      if (operatorMatch == null) {
+        setState(() => answer = "Error: No operator found");
+        return;
+      }
 
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(2.0),
-      child: Material(
-        color: color ?? Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          onTap: buttontapped,
-          borderRadius: BorderRadius.circular(8),
-          splashColor: Colors.blue.withOpacity(0.3),
-          highlightColor: Colors.blue.withOpacity(0.1),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Center(
-              child: Text(
-                buttonText,
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 25,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+      String expression = userInput.replaceAll('x', '*');
+
+      final response = await http.post(
+        Uri.parse('http://localhost:8080/calc'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'expression': expression,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() => answer = data['result'].toString());
+        _shouldStartNewExpression = true;
+      } else {
+        final error = jsonDecode(response.body)['error'] ?? 'Unknown error';
+        setState(() => answer = "Server error: $error");
+      }
+    } catch (e) {
+      setState(() => answer = "Error: ${e.toString()}");
+    }
   }
 }
